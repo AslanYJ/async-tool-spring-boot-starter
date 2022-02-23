@@ -1,0 +1,10 @@
+# IntelliJ IDEA files
+.idea
+.iws
+*.iml
+*.ipr
+
+# Maven build files
+target
+*.class
+*.log
