@@ -1,12 +1,25 @@
 package com.yjlan.async.autoconfigure;
 
+import java.util.Map;
+
 import org.springframework.beans.BeansException;
+import org.springframework.boot.autoconfigure.condition.ConditionalOnMissingBean;
 import org.springframework.boot.context.properties.EnableConfigurationProperties;
 import org.springframework.context.ApplicationContext;
 import org.springframework.context.ApplicationContextAware;
 import org.springframework.context.ApplicationListener;
+import org.springframework.context.annotation.Bean;
+import org.springframework.context.annotation.Conditional;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.context.event.ContextRefreshedEvent;
+
+import com.yjlan.async.annotation.Channel;
+import com.yjlan.async.event.DispatcherEvent;
+import com.yjlan.async.eventbus.DispatcherEventBus;
+import com.yjlan.async.eventbus.WorkerEventBusManager;
+import com.yjlan.async.listener.EventListener;
+import com.yjlan.async.thread.ExecutorService;
+import com.yjlan.async.utils.CglibUtils;
 
 /**
  * @author yjlan
@@ -63,14 +76,41 @@ public class AsyncToolAutoConfiguration implements ApplicationListener<ContextRe
         this.executorConfig = executorConfig;
     }
     
-   
+    
+    @Bean
+    @Conditional(EventBusCondition.class)
+    @ConditionalOnMissingBean
+    public DispatcherEventBus dispatcherEventBus() {
+        return new DispatcherEventBus(dispatcherConfig,workerConfig);
+    }
+    
+    
+    @Bean
+    @Conditional(ExecutorCondition.class)
+    @ConditionalOnMissingBean
+    public ExecutorService executorService(ExecutorConfig executorConfig) {
+        return new ExecutorService(executorConfig);
+    }
+    
+    
+    @Override
+    public void onApplicationEvent(ContextRefreshedEvent contextRefreshedEvent) {
+        // 将监听器绑定到对应的EventBus中
+        Map<String, EventListener> eventListenerMap = applicationContext.getBeansOfType(EventListener.class);
+        WorkerEventBusManager workerEventBusManager = WorkerEventBusManager.getInstance();
+        for (EventListener eventListener : eventListenerMap.values()) {
+            Class<?> realClazz = CglibUtils.filterCglibProxyClass(eventListener.getClass());
+            Channel channel = realClazz.getAnnotation(Channel.class);
+            if (channel != null && !channel.value().isEmpty()) {
+                workerEventBusManager.getWorkerEventBus(channel.value()).register(eventListener);
+            }
+        }
+    }
+
     @Override
     public void setApplicationContext(ApplicationContext applicationContext) throws BeansException {
         this.applicationContext = applicationContext;
     }
     
-    @Override
-    public void onApplicationEvent(ContextRefreshedEvent contextRefreshedEvent) {
-    
-    }
+  
 }
